@@ -107,11 +107,9 @@ export function ShelfPage() {
     setError('')
     setNotice(`正在导入 ${files.length} 本书…`)
     try {
-      const imported: ShelfItem[] = []
-      for (const file of files) imported.push(await importLocalBook(file))
+      for (const file of files) await importLocalBook(file)
       await load()
       setNotice(`${files.length} 本书已保存在此浏览器`)
-      if (imported.length === 1) navigate(`/reader/${imported[0].id}`)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '导入失败')
       setNotice('')

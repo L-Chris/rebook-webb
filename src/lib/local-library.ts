@@ -5,10 +5,12 @@ import {
   BrowserURLFactory,
   registerBuiltInParsers,
   registry,
+  type Book,
   type BookMetadata,
   type Contributor,
   type LanguageMap,
 } from 'rebook'
+import { createBrowserFixedPdfCanvasRenderer } from 'rebook/renderers/browser'
 
 const DATABASE_NAME = 'rebook-local-library'
 const DATABASE_VERSION = 1
@@ -166,13 +168,45 @@ async function extractLocalBookMetadata(file: File): Promise<LocalBookMetadata> 
       const parsedTitle = formatLanguageMap(book.metadata?.title).trim()
       const title = parsedTitle && parsedTitle !== file.name ? parsedTitle : fallback.title
       const author = formatContributors(book.metadata?.author) || null
-      const cover = book.getCover ? await book.getCover() : null
+      const cover = await extractBookCover(book)
       return { title, author, cover }
     } finally {
       book.destroy?.()
     }
   } catch {
     return fallback
+  }
+}
+
+export async function extractBookCover(book: Book): Promise<Blob | null> {
+  if (book.getCover) {
+    try {
+      const cover = await book.getCover()
+      if (cover) return cover
+    } catch {
+      // Fixed-layout formats can still provide a rendered first-page cover.
+    }
+  }
+
+  const document = book.fixedDocument
+  if (document?.format !== 'pdf' || document.pageCount < 1) return null
+
+  const page = await document.getPage(0)
+  const scale = Math.min(1, 360 / page.width, 540 / page.height)
+  const canvas = window.document.createElement('canvas')
+  const renderer = createBrowserFixedPdfCanvasRenderer({ background: '#ffffff' })
+  try {
+    await renderer.renderPage(document, canvas, 0, {
+      intent: 'thumbnail',
+      scale: Number.isFinite(scale) && scale > 0 ? scale : 1,
+      devicePixelRatio: 1,
+      textLayer: false,
+    })
+    return await canvasToBlob(canvas, 'image/webp', 0.86)
+      || await canvasToBlob(canvas, 'image/png')
+  } finally {
+    canvas.width = 0
+    canvas.height = 0
   }
 }
 
@@ -200,6 +234,10 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error || new Error('无法读取封面'))
     reader.readAsDataURL(blob)
   })
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob | null> {
+  return new Promise(resolve => canvas.toBlob(resolve, type, quality))
 }
 
 function titleFromFileName(fileName: string) {

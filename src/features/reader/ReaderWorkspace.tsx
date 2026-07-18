@@ -75,6 +75,7 @@ import {
   type ShelfItem,
 } from '../../lib/api'
 import {
+  extractBookCover,
   getLocalBook,
   isLocalBookId,
   updateLocalBookMetadata,
@@ -1300,7 +1301,7 @@ function ReaderWorkspace({
       const author = formatBookContributors(openedBook.metadata?.author)
       let cover: Blob | null = null
       try {
-        cover = openedBook.getCover ? await openedBook.getCover() : null
+        cover = await extractBookCover(openedBook)
       } catch (error) {
         appendDebug('cover extraction failed', formatError(error))
       }
